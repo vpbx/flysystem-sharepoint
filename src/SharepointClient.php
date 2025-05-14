@@ -29,7 +29,7 @@ class SharepointClient
     protected string $clientId;
     protected string $clientSecret;
     protected string $sharepointGroupName;
-    protected string $drivePath;
+    protected string $drivePath = '';
 
     protected Client $client;
     protected Graph $graph;
@@ -104,7 +104,12 @@ class SharepointClient
      */
     public function upload(string $path, $contents)
     {
-        if($this->shouldUploadChunked($contents)) {
+        if (empty($this->drivePath)) {
+            $this->logger->error('Drive path is not initialized. Cannot upload file.');
+            return false;
+        }
+
+        if ($this->shouldUploadChunked($contents)) {
             $this->logger->info('File "' . $path . '" should be uploaded as chunk. Not implemented.');
             return false;
         }
@@ -159,7 +164,7 @@ class SharepointClient
     {
         $size = is_string($contents) ? strlen($contents) : fstat($contents)['size'];
 
-        if($size === null || $this->isPipe($contents)) {
+        if ($size === null || $this->isPipe($contents)) {
             return true;
         }
 
@@ -197,9 +202,9 @@ class SharepointClient
          * @var Drive[] $drives
          */
         $drives = $this->getDrivesByGroup($group, $driveName);
-        if(count($drives) === 0) {
+        if (count($drives) === 0) {
             throw new GraphException('No drives available');
-        } else if (count($drives) > 1) {
+        } elseif (count($drives) > 1) {
             throw new GraphException('Multiple drives found. No drive specified.');
         }
 
@@ -214,9 +219,8 @@ class SharepointClient
      */
     public function getGroupByName(string $name): ?Group
     {
-        foreach ($this->getGroups() as $group)
-        {
-            if($group->getDisplayName() === $name) {
+        foreach ($this->getGroups() as $group) {
+            if ($group->getDisplayName() === $name) {
                 return $group;
             }
         }
@@ -235,15 +239,17 @@ class SharepointClient
             ->setReturnType(\Microsoft\Graph\Model\Drive::class)
             ->execute();
 
-        if(!$driveName) {
+        if (!$driveName) {
             return $drives;
         }
 
-        return array_values(array_filter(
-            $drives,
-            function(Drive $drive) use ($driveName) {
-                return strtolower($drive->getName()) === strtolower($driveName);
-            })
+        return array_values(
+            array_filter(
+                $drives,
+                function (Drive $drive) use ($driveName) {
+                    return strtolower($drive->getName()) === strtolower($driveName);
+                }
+            )
         );
     }
 
@@ -265,7 +271,7 @@ class SharepointClient
         try {
             return $graphRequest->execute();
         } catch (GuzzleException $e) {
-            if($e->getCode() == 401) {
+            if ($e->getCode() == 401) {
                 $this->refreshAccessToken();
                 $this->applyAccessToken($this->accessToken, $graphRequest);
                 return $this->executeRequest($graphRequest);
@@ -285,7 +291,7 @@ class SharepointClient
     protected function applyAccessToken(string $accessToken, GraphRequest $graphRequest = null)
     {
         $this->graph->setAccessToken($accessToken);
-        if($graphRequest) {
+        if ($graphRequest) {
             $graphRequest->setAccessToken($accessToken);
         }
     }
